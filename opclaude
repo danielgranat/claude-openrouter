@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SESSIONS=false
+
+# Parse arguments
+ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--sessions" ]; then
+    SESSIONS=true
+  else
+    ARGS+=("$arg")
+  fi
+done
+
+VOLUMES=(
+  "-v" "$(pwd):/workspace"
+)
+
+if [ "$SESSIONS" = true ]; then
+  mkdir -p "$HOME/.opclaude/sessions"
+  VOLUMES+=("-v" "$HOME/.opclaude/sessions:/home/claude/.claude/sessions:rw")
+fi
+
+exec docker run -it --rm \
+  --env-file "$SCRIPT_DIR/.env" \
+  -e ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
+  -e ANTHROPIC_API_KEY="" \
+  -e TERM="xterm-256color" \
+  "${VOLUMES[@]}" \
+  claude-openrouter ${ARGS[@]+"${ARGS[@]}"}

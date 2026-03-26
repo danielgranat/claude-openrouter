@@ -1,0 +1,20 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/claude/.claude/hooks/context-monitor.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "trustedDirectories": [
+    "/workspace"
+  ],
+  "skipDangerousModePermissionPrompt": true
+}
