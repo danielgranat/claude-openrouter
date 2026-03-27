@@ -1,0 +1,62 @@
+[
+  {
+    "id": "nvidia/nemotron-3-super-120b-a12b:free",
+    "name": "NVIDIA Nemotron 3 Super 120B",
+    "context": 262144,
+    "pricing": "free"
+  },
+  {
+    "id": "stepfun/step-3.5-flash:free",
+    "name": "StepFun Step 3.5 Flash",
+    "context": 256000,
+    "pricing": "free"
+  },
+  {
+    "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+    "name": "NVIDIA Nemotron 3 Nano 30B",
+    "context": 256000,
+    "pricing": "free"
+  },
+  {
+    "id": "minimax/minimax-m2.5:free",
+    "name": "MiniMax M2.5",
+    "context": 196608,
+    "pricing": "free"
+  },
+  {
+    "id": "arcee-ai/trinity-large-preview:free",
+    "name": "Arcee AI Trinity Large",
+    "context": 131000,
+    "pricing": "free"
+  },
+  {
+    "id": "inception/mercury-2",
+    "name": "Inception Mercury 2",
+    "context": 128000,
+    "pricing": "$0.25/$0.75 per 1M tokens"
+  },
+  {
+    "id": "anthropic/claude-sonnet-4-6",
+    "name": "Claude Sonnet 4.6",
+    "context": 200000,
+    "pricing": "$3/$15 per 1M tokens"
+  },
+  {
+    "id": "anthropic/claude-opus-4-6",
+    "name": "Claude Opus 4.6",
+    "context": 1000000,
+    "pricing": "$15/$75 per 1M tokens"
+  },
+  {
+    "id": "google/gemini-2.5-pro-preview",
+    "name": "Google Gemini 2.5 Pro",
+    "context": 1048576,
+    "pricing": "$1.25/$10 per 1M tokens"
+  },
+  {
+    "id": "openai/gpt-4.1",
+    "name": "OpenAI GPT-4.1",
+    "context": 1047576,
+    "pricing": "$2/$8 per 1M tokens"
+  }
+]

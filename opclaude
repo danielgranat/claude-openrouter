@@ -3,16 +3,82 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SESSIONS=false
+MODEL=""
 
 # Parse arguments
 ARGS=()
 for arg in "$@"; do
-  if [ "$arg" = "--sessions" ]; then
-    SESSIONS=true
-  else
-    ARGS+=("$arg")
-  fi
+  case "$arg" in
+    --sessions) SESSIONS=true ;;
+    --model=*) MODEL="${arg#--model=}" ;;
+    --model) MODEL="__pick__" ;;
+    *) ARGS+=("$arg") ;;
+  esac
 done
+
+# If --model was passed without a value, the next arg would have been consumed.
+# Handle --model <value> (two separate args)
+if [ "$MODEL" = "__pick__" ]; then
+  MODEL=""
+fi
+
+# Model picker
+if [ -z "$MODEL" ] && [ -t 0 ]; then
+  MODELS_FILE="$SCRIPT_DIR/models.json"
+  if [ -f "$MODELS_FILE" ]; then
+    echo "Select a model:"
+    echo ""
+
+    # Read models into arrays
+    IDS=()
+    NAMES=()
+    CONTEXTS=()
+    PRICES=()
+    while IFS='|' read -r id name ctx price; do
+      IDS+=("$id")
+      NAMES+=("$name")
+      CONTEXTS+=("$ctx")
+      PRICES+=("$price")
+    done < <(python3 -c "
+import json, sys
+with open('$MODELS_FILE') as f:
+    models = json.load(f)
+for m in models:
+    ctx = m['context']
+    if ctx >= 1000000:
+        ctx_str = f'{ctx/1000000:.0f}M'
+    else:
+        ctx_str = f'{ctx/1000:.0f}K'
+    print(f\"{m['id']}|{m['name']}|{ctx_str}|{m['pricing']}\")
+")
+
+    for i in "${!IDS[@]}"; do
+      printf "  %d) %-35s %5s  %s\n" $((i+1)) "${NAMES[$i]}" "${CONTEXTS[$i]}" "${PRICES[$i]}"
+    done
+
+    echo ""
+    read -rp "Choice [1]: " choice
+    choice=${choice:-1}
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#IDS[@]}" ]; then
+      MODEL="${IDS[$((choice-1))]}"
+    else
+      echo "Invalid choice, using default."
+      MODEL="${IDS[0]}"
+    fi
+  fi
+fi
+
+# Fallback to .env values if no model selected
+MODEL_ENVS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ENVS=(
+    "-e" "ANTHROPIC_DEFAULT_OPUS_MODEL=$MODEL"
+    "-e" "ANTHROPIC_DEFAULT_SONNET_MODEL=$MODEL"
+    "-e" "ANTHROPIC_DEFAULT_HAIKU_MODEL=$MODEL"
+    "-e" "CLAUDE_CODE_SUBAGENT_MODEL=$MODEL"
+  )
+fi
 
 VOLUMES=(
   "-v" "$(pwd):/workspace"
@@ -28,5 +94,6 @@ exec docker run -it --rm \
   -e ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
   -e ANTHROPIC_API_KEY="" \
   -e TERM="xterm-256color" \
+  ${MODEL_ENVS[@]+"${MODEL_ENVS[@]}"} \
   "${VOLUMES[@]}" \
   claude-openrouter ${ARGS[@]+"${ARGS[@]}"}
