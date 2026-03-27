@@ -3,16 +3,95 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SESSIONS=false
+MODEL=""
 
 # Parse arguments
 ARGS=()
 for arg in "$@"; do
-  if [ "$arg" = "--sessions" ]; then
-    SESSIONS=true
-  else
-    ARGS+=("$arg")
-  fi
+  case "$arg" in
+    --sessions) SESSIONS=true ;;
+    --model=*) MODEL="${arg#--model=}" ;;
+    *) ARGS+=("$arg") ;;
+  esac
 done
+
+# Model picker (interactive only, when no --model= given)
+if [ -z "$MODEL" ] && [ -t 0 ]; then
+  MODELS_FILE="$SCRIPT_DIR/models.json"
+  if [ -f "$MODELS_FILE" ] && command -v gum &>/dev/null; then
+    # Build display lines from models.json
+    LINES=()
+    IDS=()
+    while IFS='|' read -r id line; do
+      IDS+=("$id")
+      LINES+=("$line")
+    done < <(python3 -c "
+import json
+with open('$MODELS_FILE') as f:
+    models = json.load(f)
+for m in models:
+    ctx = m['context']
+    ctx_str = f'{ctx/1000000:.0f}M' if ctx >= 1000000 else f'{ctx/1000:.0f}K'
+    print(f\"{m['id']}|{m['name']:<35s} {ctx_str:>5s}  {m['pricing']}\")
+")
+
+    SELECTED=$(printf '%s\n' "${LINES[@]}" | gum choose \
+      --header "⚡ OpenRouter — Select a model" \
+      --header.foreground="6" \
+      --cursor.foreground="3" \
+      --selected.foreground="2") || true
+
+    if [ -n "$SELECTED" ]; then
+      for i in "${!LINES[@]}"; do
+        if [ "${LINES[$i]}" = "$SELECTED" ]; then
+          MODEL="${IDS[$i]}"
+          break
+        fi
+      done
+    fi
+  elif [ -f "$MODELS_FILE" ]; then
+    # Fallback: numbered list if gum not installed
+    IDS=()
+    NAMES=()
+    while IFS='|' read -r id line; do
+      IDS+=("$id")
+      NAMES+=("$line")
+    done < <(python3 -c "
+import json
+with open('$MODELS_FILE') as f:
+    models = json.load(f)
+for m in models:
+    ctx = m['context']
+    ctx_str = f'{ctx/1000000:.0f}M' if ctx >= 1000000 else f'{ctx/1000:.0f}K'
+    print(f\"{m['id']}|{m['name']:<35s} {ctx_str:>5s}  {m['pricing']}\")
+")
+
+    echo "⚡ OpenRouter — Select a model:"
+    echo ""
+    for i in "${!IDS[@]}"; do
+      printf "  %2d) %s\n" $((i+1)) "${NAMES[$i]}"
+    done
+    echo ""
+    read -rp "Choice [1]: " choice
+    choice=${choice:-1}
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#IDS[@]}" ]; then
+      MODEL="${IDS[$((choice-1))]}"
+    else
+      MODEL="${IDS[0]}"
+    fi
+  fi
+fi
+
+# Model env overrides (if selected)
+MODEL_ENVS=()
+if [ -n "$MODEL" ]; then
+  MODEL_ENVS=(
+    "-e" "ANTHROPIC_DEFAULT_OPUS_MODEL=$MODEL"
+    "-e" "ANTHROPIC_DEFAULT_SONNET_MODEL=$MODEL"
+    "-e" "ANTHROPIC_DEFAULT_HAIKU_MODEL=$MODEL"
+    "-e" "CLAUDE_CODE_SUBAGENT_MODEL=$MODEL"
+  )
+fi
 
 VOLUMES=(
   "-v" "$(pwd):/workspace"
@@ -28,5 +107,6 @@ exec docker run -it --rm \
   -e ANTHROPIC_BASE_URL="https://openrouter.ai/api" \
   -e ANTHROPIC_API_KEY="" \
   -e TERM="xterm-256color" \
+  ${MODEL_ENVS[@]+"${MODEL_ENVS[@]}"} \
   "${VOLUMES[@]}" \
   claude-openrouter ${ARGS[@]+"${ARGS[@]}"}
