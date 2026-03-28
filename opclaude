@@ -2,10 +2,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
 
 INCOGNITO=false
 SESSION_DIR=""
 MODEL=""
+PICK_MODEL=false
 
 # Parse arguments, intercept our flags
 ARGS=()
@@ -18,16 +20,38 @@ while [[ $# -gt 0 ]]; do
       SESSION_DIR="$2"; shift 2 ;;
     --model=*)    MODEL="${1#--model=}"; shift ;;
     --model)      MODEL="$2"; shift 2 ;;
+    --setup)      PICK_MODEL=true; shift ;;
     --sessions)   shift ;; # backward compat no-op
     *)            ARGS+=("$1"); shift ;;
   esac
 done
 
-# Model picker (interactive only, when no --model given)
-if [ -z "$MODEL" ] && [ -t 0 ]; then
-  MODELS_FILE="$SCRIPT_DIR/models.json"
-  if [ -f "$MODELS_FILE" ] && command -v gum &>/dev/null; then
-    # Build display lines from models.json
+# Read saved model from .env
+saved_model() {
+  grep '^ANTHROPIC_DEFAULT_SONNET_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-
+}
+
+# Save model to .env
+save_model() {
+  local model="$1"
+  if [ ! -f "$ENV_FILE" ]; then
+    cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+  fi
+  for var in ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL; do
+    if grep -q "^${var}=" "$ENV_FILE"; then
+      sed -i '' "s|^${var}=.*|${var}=$model|" "$ENV_FILE"
+    else
+      echo "${var}=$model" >> "$ENV_FILE"
+    fi
+  done
+}
+
+# Model picker (gum or numbered fallback)
+pick_model() {
+  local MODELS_FILE="$SCRIPT_DIR/models.json"
+  [ -f "$MODELS_FILE" ] || return
+
+  if command -v gum &>/dev/null; then
     LINES=()
     IDS=()
     while IFS='|' read -r id line; do
@@ -53,12 +77,12 @@ for m in models:
       for i in "${!LINES[@]}"; do
         if [ "${LINES[$i]}" = "$SELECTED" ]; then
           MODEL="${IDS[$i]}"
-          break
+          return
         fi
       done
     fi
-  elif [ -f "$MODELS_FILE" ]; then
-    # Fallback: numbered list if gum not installed
+  else
+    # Fallback: numbered list
     IDS=()
     NAMES=()
     while IFS='|' read -r id line; do
@@ -88,9 +112,20 @@ for m in models:
       MODEL="${IDS[0]}"
     fi
   fi
+}
+
+# Determine model: --model flag > --setup picker > saved in .env > first-time picker
+if [ -n "$MODEL" ]; then
+  save_model "$MODEL"
+elif [ "$PICK_MODEL" = true ] && [ -t 0 ]; then
+  pick_model
+  [ -n "$MODEL" ] && save_model "$MODEL"
+elif [ -z "$(saved_model)" ] && [ -t 0 ]; then
+  pick_model
+  [ -n "$MODEL" ] && save_model "$MODEL"
 fi
 
-# Model env overrides (if selected)
+# Model env overrides (if selected via flag or picker, override .env for this run)
 MODEL_ENVS=()
 if [ -n "$MODEL" ]; then
   MODEL_ENVS=(
@@ -101,7 +136,6 @@ if [ -n "$MODEL" ]; then
   )
 fi
 
-# Volumes
 VOLUMES=(
   "-v" "$(pwd):/workspace"
 )

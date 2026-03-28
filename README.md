@@ -70,12 +70,13 @@ opclaude (alias)
 
 ### Configuration
 
-**Change the model** — the interactive picker runs on every launch. To skip it:
+**Change the model** — the selected model is saved to `.env` and reused on subsequent runs:
 ```bash
-opclaude --model google/gemini-2.5-pro-preview
+opclaude --setup                                # Interactive picker
+opclaude --model google/gemini-2.5-pro-preview  # Set directly
 ```
 
-The picker uses [gum](https://github.com/charmbracelet/gum) if installed, otherwise falls back to a numbered list. Models are defined in `models.json`.
+On first run (no model in `.env`), the picker launches automatically. Uses [gum](https://github.com/charmbracelet/gum) if installed, otherwise falls back to a numbered list. Models are defined in `models.json`.
 
 **Edit Claude settings** — modify `.opclaude/settings.json` and rebuild the image.
 
