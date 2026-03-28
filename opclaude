@@ -2,25 +2,35 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SESSIONS=false
 
-# Parse arguments
+INCOGNITO=false
+SESSION_DIR=""
+
+# Parse arguments, intercept our flags
 ARGS=()
-for arg in "$@"; do
-  if [ "$arg" = "--sessions" ]; then
-    SESSIONS=true
-  else
-    ARGS+=("$arg")
-  fi
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --resume)     ARGS+=("--resume"); shift ;;
+    -c)           ARGS+=("--continue"); shift ;;
+    --incognito)  INCOGNITO=true; shift ;;
+    --session-dir)
+      SESSION_DIR="$2"; shift 2 ;;
+    --sessions)   shift ;; # backward compat no-op
+    *)            ARGS+=("$1"); shift ;;
+  esac
 done
 
 VOLUMES=(
   "-v" "$(pwd):/workspace"
 )
 
-if [ "$SESSIONS" = true ]; then
-  mkdir -p "$HOME/.opclaude/sessions"
-  VOLUMES+=("-v" "$HOME/.opclaude/sessions:/home/claude/.claude/sessions:rw")
+if [ "$INCOGNITO" = false ]; then
+  SESSION_DIR="${SESSION_DIR:-$(pwd)/.opclaude/sessions}"
+  mkdir -p "$SESSION_DIR/sessions" "$SESSION_DIR/projects"
+  VOLUMES+=(
+    "-v" "$SESSION_DIR/sessions:/home/claude/.claude/sessions:rw"
+    "-v" "$SESSION_DIR/projects:/home/claude/.claude/projects:rw"
+  )
 fi
 
 exec docker run -it --rm \

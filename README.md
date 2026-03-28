@@ -23,8 +23,11 @@ Run Claude Code in a Docker container, routed through OpenRouter. No changes to 
 
 ```bash
 cd ~/my-project
-opclaude              # Run Claude Code in the current directory
-opclaude --sessions   # Same, but persist session history across runs
+opclaude                          # New session (history saved to .opclaude/sessions/)
+opclaude --resume                 # Pick from previous sessions interactively
+opclaude -c                       # Continue the most recent session
+opclaude --incognito              # Ephemeral session, no history saved
+opclaude --session-dir ~/my-dir   # Override where sessions are stored
 ```
 
 This mounts the current directory as `/workspace` inside the container. Claude runs with `--dangerously-skip-permissions` (safe — it's in a disposable container).
@@ -33,9 +36,11 @@ Onboarding prompts (theme, trust, permissions) are pre-configured in the Docker 
 
 ### Session persistence
 
-By default, sessions are ephemeral — history is lost when the container exits.
+Sessions are automatically persisted to `.opclaude/sessions/` in your project directory. When a container exits, your conversation history is preserved and can be resumed in a new container.
 
-With `--sessions`, session history is persisted to `~/.opclaude/sessions/` on your host, so you can resume previous conversations and see history across runs.
+Use `--session-dir <path>` to override the storage location, or `--incognito` to disable persistence entirely.
+
+Consider adding `.opclaude/` to your project's `.gitignore`.
 
 ## How it works
 
