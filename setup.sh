@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SHELL_RC="$HOME/.zshrc"
 
-# Ensure ~/.claude exists for first-time users
+# Ensure ~/.opclaude exists for first-time users
 mkdir -p "$HOME/.opclaude"
 
 ALIAS_LINE="alias opclaude='${SCRIPT_DIR}/opclaude'"

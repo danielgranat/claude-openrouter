@@ -2,38 +2,71 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SESSIONS=false
-MODEL=""
+ENV_FILE="$SCRIPT_DIR/.env"
 
-# Parse arguments
+INCOGNITO=false
+SESSION_DIR=""
+MODEL=""
+PICK_MODEL=false
+
+# Parse arguments, intercept our flags
 ARGS=()
-for arg in "$@"; do
-  case "$arg" in
-    --sessions) SESSIONS=true ;;
-    --model=*) MODEL="${arg#--model=}" ;;
-    *) ARGS+=("$arg") ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --resume)     ARGS+=("--resume"); shift ;;
+    -c)           ARGS+=("--continue"); shift ;;
+    --incognito)  INCOGNITO=true; shift ;;
+    --session-dir)
+      if [ -z "${2:-}" ] || [[ "${2:-}" == --* ]]; then
+        echo "Error: --session-dir requires a path argument" >&2; exit 1
+      fi
+      SESSION_DIR="$2"; shift 2 ;;
+    --model=*)    MODEL="${1#--model=}"; shift ;;
+    --model)
+      if [ -z "${2:-}" ] || [[ "${2:-}" == --* ]]; then
+        echo "Error: --model requires a model name argument" >&2; exit 1
+      fi
+      MODEL="$2"; shift 2 ;;
+    --setup)      PICK_MODEL=true; shift ;;
+    --sessions)   shift ;; # backward compat no-op
+    *)            ARGS+=("$1"); shift ;;
   esac
 done
 
-# Model picker (interactive only, when no --model= given)
-if [ -z "$MODEL" ] && [ -t 0 ]; then
-  MODELS_FILE="$SCRIPT_DIR/models.json"
-  if [ -f "$MODELS_FILE" ] && command -v gum &>/dev/null; then
-    # Build display lines from models.json
+# Read saved model from .env
+saved_model() {
+  grep '^ANTHROPIC_DEFAULT_SONNET_MODEL=' "$ENV_FILE" 2>/dev/null | cut -d= -f2-
+}
+
+# Save model to .env
+save_model() {
+  local model="$1"
+  if [ ! -f "$ENV_FILE" ]; then
+    cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
+  fi
+  local tmpfile
+  for var in ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL; do
+    if grep -q "^${var}=" "$ENV_FILE"; then
+      tmpfile=$(mktemp)
+      sed "s|^${var}=.*|${var}=$model|" "$ENV_FILE" > "$tmpfile" && mv "$tmpfile" "$ENV_FILE"
+    else
+      echo "${var}=$model" >> "$ENV_FILE"
+    fi
+  done
+}
+
+# Model picker (gum or numbered fallback)
+pick_model() {
+  local MODELS_FILE="$SCRIPT_DIR/models.json"
+  [ -f "$MODELS_FILE" ] || return
+
+  if command -v gum &>/dev/null; then
     LINES=()
     IDS=()
     while IFS='|' read -r id line; do
       IDS+=("$id")
       LINES+=("$line")
-    done < <(python3 -c "
-import json
-with open('$MODELS_FILE') as f:
-    models = json.load(f)
-for m in models:
-    ctx = m['context']
-    ctx_str = f'{ctx/1000000:.0f}M' if ctx >= 1000000 else f'{ctx/1000:.0f}K'
-    print(f\"{m['id']}|{m['name']:<35s} {ctx_str:>5s}  {m['pricing']}\")
-")
+    done < <(jq -r '.[] | "\(.id)|\(.name | . + " " * (35 - length))  \(if .context >= 1000000 then "\(.context / 1000000 | floor)M" else "\(.context / 1000 | floor)K" end | " " * (5 - length) + .)  \(.pricing)"' "$MODELS_FILE")
 
     SELECTED=$(printf '%s\n' "${LINES[@]}" | gum choose \
       --header "⚡ OpenRouter — Select a model" \
@@ -45,26 +78,18 @@ for m in models:
       for i in "${!LINES[@]}"; do
         if [ "${LINES[$i]}" = "$SELECTED" ]; then
           MODEL="${IDS[$i]}"
-          break
+          return
         fi
       done
     fi
-  elif [ -f "$MODELS_FILE" ]; then
-    # Fallback: numbered list if gum not installed
+  else
+    # Fallback: numbered list
     IDS=()
     NAMES=()
     while IFS='|' read -r id line; do
       IDS+=("$id")
       NAMES+=("$line")
-    done < <(python3 -c "
-import json
-with open('$MODELS_FILE') as f:
-    models = json.load(f)
-for m in models:
-    ctx = m['context']
-    ctx_str = f'{ctx/1000000:.0f}M' if ctx >= 1000000 else f'{ctx/1000:.0f}K'
-    print(f\"{m['id']}|{m['name']:<35s} {ctx_str:>5s}  {m['pricing']}\")
-")
+    done < <(jq -r '.[] | "\(.id)|\(.name | . + " " * (35 - length))  \(if .context >= 1000000 then "\(.context / 1000000 | floor)M" else "\(.context / 1000 | floor)K" end | " " * (5 - length) + .)  \(.pricing)"' "$MODELS_FILE")
 
     echo "⚡ OpenRouter — Select a model:"
     echo ""
@@ -80,9 +105,20 @@ for m in models:
       MODEL="${IDS[0]}"
     fi
   fi
+}
+
+# Determine model: --model flag > --setup picker > saved in .env > first-time picker
+if [ -n "$MODEL" ]; then
+  save_model "$MODEL"
+elif [ "$PICK_MODEL" = true ] && [ -t 0 ]; then
+  pick_model
+  [ -n "$MODEL" ] && save_model "$MODEL"
+elif [ -z "$(saved_model)" ] && [ -t 0 ]; then
+  pick_model
+  [ -n "$MODEL" ] && save_model "$MODEL"
 fi
 
-# Model env overrides (if selected)
+# Model env overrides (if selected via flag or picker, override .env for this run)
 MODEL_ENVS=()
 if [ -n "$MODEL" ]; then
   MODEL_ENVS=(
@@ -97,9 +133,13 @@ VOLUMES=(
   "-v" "$(pwd):/workspace"
 )
 
-if [ "$SESSIONS" = true ]; then
-  mkdir -p "$HOME/.opclaude/sessions"
-  VOLUMES+=("-v" "$HOME/.opclaude/sessions:/home/claude/.claude/sessions:rw")
+if [ "$INCOGNITO" = false ]; then
+  SESSION_DIR="${SESSION_DIR:-$(pwd)/.opclaude/sessions}"
+  mkdir -p "$SESSION_DIR/sessions" "$SESSION_DIR/projects"
+  VOLUMES+=(
+    "-v" "$SESSION_DIR/sessions:/home/claude/.claude/sessions:rw"
+    "-v" "$SESSION_DIR/projects:/home/claude/.claude/projects:rw"
+  )
 fi
 
 exec docker run -it --rm \

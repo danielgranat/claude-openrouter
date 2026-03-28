@@ -1,6 +1,12 @@
 # Claude Code via OpenRouter (Docker)
 
-Run Claude Code in a Docker container, routed through OpenRouter with free models. No changes to your local machine's Claude installation.
+Run Claude Code in a Docker container, routed through OpenRouter. No changes to your local machine's Claude installation.
+
+## Prerequisites
+
+- Docker
+- `jq` (for the model picker)
+- [gum](https://github.com/charmbracelet/gum) (optional — nicer interactive picker, falls back to numbered list)
 
 ## Setup
 
@@ -23,8 +29,11 @@ Run Claude Code in a Docker container, routed through OpenRouter with free model
 
 ```bash
 cd ~/my-project
-opclaude              # Run Claude Code in the current directory
-opclaude --sessions   # Same, but persist session history across runs
+opclaude                          # New session (history saved to .opclaude/sessions/)
+opclaude --resume                 # Pick from previous sessions interactively
+opclaude -c                       # Continue the most recent session
+opclaude --incognito              # Ephemeral session, no history saved
+opclaude --session-dir ~/my-dir   # Override where sessions are stored
 ```
 
 This mounts the current directory as `/workspace` inside the container. Claude runs with `--dangerously-skip-permissions` (safe — it's in a disposable container).
@@ -33,9 +42,11 @@ Onboarding prompts (theme, trust, permissions) are pre-configured in the Docker 
 
 ### Session persistence
 
-By default, sessions are ephemeral — history is lost when the container exits.
+Sessions are automatically persisted to `.opclaude/sessions/` in your project directory. When a container exits, your conversation history is preserved and can be resumed in a new container.
 
-With `--sessions`, session history is persisted to `~/.opclaude/sessions/` on your host, so you can resume previous conversations and see history across runs.
+Use `--session-dir <path>` to override the storage location, or `--incognito` to disable persistence entirely.
+
+Consider adding `.opclaude/` to your project's `.gitignore`.
 
 ## How it works
 
@@ -59,14 +70,19 @@ opclaude (alias)
 | `.env.example` | Template for API key and model config |
 | `.opclaude/settings.json` | Claude Code settings (trusted dirs, hooks) — baked into image |
 | `.opclaude/hooks/context-monitor.sh` | PostToolUse hook that warns when approaching token limit |
+| `.opclaude/hooks/statusline.sh` | Status line showing model, context usage, and session cost |
 | `.opclaude/.claude.json` | Minimal preferences to skip onboarding prompts |
+| `models.json` | Catalog of available OpenRouter models for the picker |
 
 ### Configuration
 
-**Change the model** — edit `.env`:
+**Change the model** — the selected model is saved to `.env` and reused on subsequent runs:
 ```bash
-ANTHROPIC_DEFAULT_SONNET_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+opclaude --setup                                # Interactive picker
+opclaude --model google/gemini-2.5-pro-preview  # Set directly
 ```
+
+On first run (no model in `.env`), the picker launches automatically. Uses [gum](https://github.com/charmbracelet/gum) if installed, otherwise falls back to a numbered list. Models are defined in `models.json`.
 
 **Edit Claude settings** — modify `.opclaude/settings.json` and rebuild the image.
 
@@ -87,5 +103,5 @@ Thresholds can be adjusted in `.opclaude/hooks/context-monitor.sh` (`WARN_CHARS`
 
 ### Caveats
 
-- Free non-Anthropic models may not fully support Claude Code's tool use and system prompts
+- Non-Anthropic models may not fully support Claude Code's tool use and system prompts
 - The context monitor uses a rough char-to-token ratio (4:1) — it's an estimate, not exact
