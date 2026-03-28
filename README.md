@@ -64,14 +64,18 @@ opclaude (alias)
 | `.env.example` | Template for API key and model config |
 | `.opclaude/settings.json` | Claude Code settings (trusted dirs, hooks) — baked into image |
 | `.opclaude/hooks/context-monitor.sh` | PostToolUse hook that warns when approaching token limit |
+| `.opclaude/hooks/statusline.sh` | Status line showing model, context usage, and session cost |
 | `.opclaude/.claude.json` | Minimal preferences to skip onboarding prompts |
+| `models.json` | Catalog of available OpenRouter models for the picker |
 
 ### Configuration
 
-**Change the model** — edit `.env`:
+**Change the model** — the interactive picker runs on every launch. To skip it:
 ```bash
-ANTHROPIC_DEFAULT_SONNET_MODEL=nvidia/nemotron-3-super-120b-a12b:free
+opclaude --model google/gemini-2.5-pro-preview
 ```
+
+The picker uses [gum](https://github.com/charmbracelet/gum) if installed, otherwise falls back to a numbered list. Models are defined in `models.json`.
 
 **Edit Claude settings** — modify `.opclaude/settings.json` and rebuild the image.
 
