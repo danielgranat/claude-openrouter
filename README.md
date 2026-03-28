@@ -1,6 +1,6 @@
 # Claude Code via OpenRouter (Docker)
 
-Run Claude Code in a Docker container, routed through OpenRouter with free models. No changes to your local machine's Claude installation.
+Run Claude Code in a Docker container, routed through OpenRouter. No changes to your local machine's Claude installation.
 
 ## Setup
 
@@ -87,5 +87,5 @@ Thresholds can be adjusted in `.opclaude/hooks/context-monitor.sh` (`WARN_CHARS`
 
 ### Caveats
 
-- Free non-Anthropic models may not fully support Claude Code's tool use and system prompts
+- Non-Anthropic models may not fully support Claude Code's tool use and system prompts
 - The context monitor uses a rough char-to-token ratio (4:1) — it's an estimate, not exact
