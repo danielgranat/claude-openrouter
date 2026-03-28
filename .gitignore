@@ -5,5 +5,5 @@
 
 .a5c
 
-# Session history
-.opclaude/sessions/
+# Session history (in project directories)
+.opclaude/

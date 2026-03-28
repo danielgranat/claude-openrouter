@@ -17,9 +17,16 @@ while [[ $# -gt 0 ]]; do
     -c)           ARGS+=("--continue"); shift ;;
     --incognito)  INCOGNITO=true; shift ;;
     --session-dir)
+      if [ -z "${2:-}" ] || [[ "${2:-}" == --* ]]; then
+        echo "Error: --session-dir requires a path argument" >&2; exit 1
+      fi
       SESSION_DIR="$2"; shift 2 ;;
     --model=*)    MODEL="${1#--model=}"; shift ;;
-    --model)      MODEL="$2"; shift 2 ;;
+    --model)
+      if [ -z "${2:-}" ] || [[ "${2:-}" == --* ]]; then
+        echo "Error: --model requires a model name argument" >&2; exit 1
+      fi
+      MODEL="$2"; shift 2 ;;
     --setup)      PICK_MODEL=true; shift ;;
     --sessions)   shift ;; # backward compat no-op
     *)            ARGS+=("$1"); shift ;;
@@ -37,9 +44,11 @@ save_model() {
   if [ ! -f "$ENV_FILE" ]; then
     cp "$SCRIPT_DIR/.env.example" "$ENV_FILE"
   fi
+  local tmpfile
   for var in ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL CLAUDE_CODE_SUBAGENT_MODEL; do
     if grep -q "^${var}=" "$ENV_FILE"; then
-      sed -i '' "s|^${var}=.*|${var}=$model|" "$ENV_FILE"
+      tmpfile=$(mktemp)
+      sed "s|^${var}=.*|${var}=$model|" "$ENV_FILE" > "$tmpfile" && mv "$tmpfile" "$ENV_FILE"
     else
       echo "${var}=$model" >> "$ENV_FILE"
     fi
@@ -57,15 +66,7 @@ pick_model() {
     while IFS='|' read -r id line; do
       IDS+=("$id")
       LINES+=("$line")
-    done < <(python3 -c "
-import json
-with open('$MODELS_FILE') as f:
-    models = json.load(f)
-for m in models:
-    ctx = m['context']
-    ctx_str = f'{ctx/1000000:.0f}M' if ctx >= 1000000 else f'{ctx/1000:.0f}K'
-    print(f\"{m['id']}|{m['name']:<35s} {ctx_str:>5s}  {m['pricing']}\")
-")
+    done < <(jq -r '.[] | "\(.id)|\(.name | . + " " * (35 - length))  \(if .context >= 1000000 then "\(.context / 1000000 | floor)M" else "\(.context / 1000 | floor)K" end | " " * (5 - length) + .)  \(.pricing)"' "$MODELS_FILE")
 
     SELECTED=$(printf '%s\n' "${LINES[@]}" | gum choose \
       --header "⚡ OpenRouter — Select a model" \
@@ -88,15 +89,7 @@ for m in models:
     while IFS='|' read -r id line; do
       IDS+=("$id")
       NAMES+=("$line")
-    done < <(python3 -c "
-import json
-with open('$MODELS_FILE') as f:
-    models = json.load(f)
-for m in models:
-    ctx = m['context']
-    ctx_str = f'{ctx/1000000:.0f}M' if ctx >= 1000000 else f'{ctx/1000:.0f}K'
-    print(f\"{m['id']}|{m['name']:<35s} {ctx_str:>5s}  {m['pricing']}\")
-")
+    done < <(jq -r '.[] | "\(.id)|\(.name | . + " " * (35 - length))  \(if .context >= 1000000 then "\(.context / 1000000 | floor)M" else "\(.context / 1000 | floor)K" end | " " * (5 - length) + .)  \(.pricing)"' "$MODELS_FILE")
 
     echo "⚡ OpenRouter — Select a model:"
     echo ""

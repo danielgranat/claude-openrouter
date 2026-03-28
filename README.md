@@ -2,6 +2,12 @@
 
 Run Claude Code in a Docker container, routed through OpenRouter. No changes to your local machine's Claude installation.
 
+## Prerequisites
+
+- Docker
+- `jq` (for the model picker)
+- [gum](https://github.com/charmbracelet/gum) (optional — nicer interactive picker, falls back to numbered list)
+
 ## Setup
 
 1. **Configure your API key:**
