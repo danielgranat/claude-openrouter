@@ -2,6 +2,14 @@
 
 Run Claude Code in a Docker container, routed through OpenRouter. No changes to your local machine's Claude installation.
 
+## Why
+
+If you use Claude Code with an Anthropic account, switching to OpenRouter means logging out, reconfiguring, and reversing it all when you switch back. This setup avoids that entirely:
+
+- **Instant switching** — run `opclaude` for OpenRouter models, run `claude` for your regular account. No login/logout dance.
+- **Sandboxed execution** — runs in a disposable Docker container, so `--dangerously-skip-permissions` is safe. Your host machine is untouched.
+- **Any model** — use any model available on your OpenRouter account (free or paid).
+
 ## Prerequisites
 
 - Docker
